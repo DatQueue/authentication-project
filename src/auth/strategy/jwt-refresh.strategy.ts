@@ -27,7 +27,7 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh-
     const user: User = await this.userService.getUserIfRefreshTokenMatches(
       refreshToken,
       payload.id
-    )
+    );
     return user;
   }
 }

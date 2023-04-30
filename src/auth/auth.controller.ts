@@ -7,15 +7,12 @@ import { UsersService } from 'src/users/users.service';
 import { User } from 'src/users/entities/users.entity';
 import { JwtRefreshGuard } from './guard/jwt-refresh.guard';
 import { RefreshTokenDto } from './model/refreshToken.dto';
-import { Payload } from './payload/payload.interface';
-import { JwtService } from '@nestjs/jwt';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UsersService,
-    private readonly jwtService: JwtService,
   ) {}
 
   @Post('login')
@@ -44,10 +41,16 @@ export class AuthController {
 
   @Post('refresh')
   async refresh(
-    @Body() refreshTokenDto: RefreshTokenDto
+    @Body() refreshTokenDto: RefreshTokenDto,
+    @Res({ passthrough: true }) res: Response,
   ) {
     try {
-      return await this.authService.refresh(refreshTokenDto);
+      const newAccessToken = (await this.authService.refresh(refreshTokenDto)).accessToken;
+      res.setHeader('Authorization', 'Bearer ' + newAccessToken);
+      res.cookie('access_token', newAccessToken, {
+        httpOnly: true,
+      });
+      res.send({newAccessToken});
     } catch(err) {
       throw new UnauthorizedException('Invalid refresh-token');
     }
@@ -58,16 +61,6 @@ export class AuthController {
   async user(@Req() req: Request, @Res() res: Response): Promise<any> {
     const userId: number = await this.authService.userId(req); 
     const verifiedUser: User = await this.userService.findUserById(userId);
-    // let access_token = req.cookies['access_token'];
-    // const refresh_token = req.cookies['refresh_token'];
-    // const expirationTime = access_token.exp;
-    // const currentTime = Math.floor(Date.now() / 1000);
-
-    // if (expirationTime < currentTime) {
-    //   access_token = (await this.authService.refresh(refresh_token)).accessToken;
-    //   res.setHeader('Authorization', 'Bearer ' + access_token);
-    //   return res.send(verifiedUser);
-    // }
     return res.send(verifiedUser);
   }
 

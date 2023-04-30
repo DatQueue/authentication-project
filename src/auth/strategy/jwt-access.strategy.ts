@@ -6,16 +6,27 @@ import { User } from "src/users/entities/users.entity";
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { Request } from "express";
 
+const cookieExtractor = (req: Request) => {
+  let token = null;
+  if (req && req.cookies) {
+    token = req.cookies['access_token'];
+  }
+  return token;
+}
+
 @Injectable()
 export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access-token') {
   constructor(private readonly userService: UsersService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        cookieExtractor,
+      ]),
       secretOrKey: process.env.JWT_ACCESS_SECRET,
     })
   }
 
-  async validate(request: Request , payload: Payload): Promise<User> {
+  async validate(payload: Payload): Promise<User> {
     const { id } = payload;
     const user = await this.userService.findUserById(id);
 
@@ -23,7 +34,6 @@ export class JwtAccessStrategy extends PassportStrategy(Strategy, 'jwt-access-to
       throw new UnauthorizedException();
     }
 
-    request.user = user;
     return user;
   }
 }

@@ -1,7 +1,11 @@
 {
     "cSpell.words": [
         "autoincrement",
-        "datasource"
+        "datasource",
+        "datetime",
+        "firstname",
+        "lastname",
+        "typeorm"
     ],
     "editor.tabSize": 2
 }

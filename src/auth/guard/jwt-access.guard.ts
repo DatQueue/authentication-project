@@ -1,13 +1,11 @@
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { AuthGuard } from "@nestjs/passport";
-import { AuthService } from "../auth.service";
 
 @Injectable()
 export class JwtAccessAuthGuard extends AuthGuard('jwt-access-token') implements CanActivate {
   constructor(
     private jwtService: JwtService,
-    private authService: AuthService,
   ) {
     super();
   }

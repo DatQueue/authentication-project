@@ -1,13 +1,17 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersRepository } from './repositories/users.repository';
 import { UserCreateDto } from 'src/users/models/user-create.dto';
 import { User } from './entities/users.entity';
 import { UserUpdateDto } from './models/user-update.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly userRepository: UsersRepository) {}
+  constructor(
+    private readonly userRepository: UsersRepository,
+    private readonly configService: ConfigService,
+  ) {}
 
   async createUser(newUser: UserCreateDto): Promise<User> {
     const userFind: User = await this.userRepository.findOne({
@@ -75,17 +79,24 @@ export class UsersService {
     return this.userRepository.delete(id);
   }
 
-  async getCurrentRefreshToken(refreshToken: string) {
+  async getCurrentHashedRefreshToken(refreshToken: string) {
     const saltOrRounds = 10;
     const currentRefreshToken = await bcrypt.hash(refreshToken, saltOrRounds);
     return currentRefreshToken;
   }
 
+  async getCurrentRefreshTokenExp(): Promise<Date> {
+    const currentDate = new Date();
+    const currentRefreshTokenExp = new Date(currentDate.getTime() + parseInt(this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME')));
+    return currentRefreshTokenExp;
+  }
+
   async setCurrentRefreshToken(refreshToken: string, userId: number) {
-    const currentRefreshToken = await this.getCurrentRefreshToken(refreshToken);
-    console.log(currentRefreshToken, "hhhhhhhhhhhhhhhhhhhhhhhhhh");
+    const currentRefreshToken = await this.getCurrentHashedRefreshToken(refreshToken);
+    const currentRefreshTokenExp = await this.getCurrentRefreshTokenExp();
     await this.userRepository.update(userId, {
       currentRefreshToken: currentRefreshToken,
+      currentRefreshTokenExp: currentRefreshTokenExp,
     });
   }
 
@@ -109,6 +120,7 @@ export class UsersService {
   async removeRefreshToken(userId: number): Promise<any> {
     return await this.userRepository.update(userId, {
       currentRefreshToken: null,
+      currentRefreshTokenExp: null,
     });
   }
 }

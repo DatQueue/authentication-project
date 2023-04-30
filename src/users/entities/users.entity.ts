@@ -1,4 +1,4 @@
-import { Column, Entity, PrimaryColumn, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity({name:'users'})
 export class User {
@@ -20,6 +20,6 @@ export class User {
   @Column({ nullable: true })
   currentRefreshToken: string;
 
-  @Column({ type: 'date', nullable: true })
-  currentRefreshTokenExp: string;
+  @Column({ type: 'datetime', nullable: true })
+  currentRefreshTokenExp: Date;
 }
