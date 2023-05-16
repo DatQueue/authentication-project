@@ -14,7 +14,7 @@ async function bootstrap() {
 
   // .env 파일 로드
   dotenv.config();
-  await app.listen(4000);
+  await app.listen(4000, '0.0.0.0');
 
   if (module.hot) {
     module.hot.accept();

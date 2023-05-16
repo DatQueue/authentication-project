@@ -3,4 +3,7 @@ export interface Payload {
   email: string;
   firstName: string;
   lastName: string;
+  iat?: string;
+  exp?: string;
+  isSecondFactorAuthenticated?: boolean;
 }

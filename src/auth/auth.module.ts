@@ -8,12 +8,16 @@ import { UsersModule } from 'src/users/users.module';
 import { UsersService } from 'src/users/users.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { User } from 'src/users/entities/users.entity';
-import { TypeOrmExModule } from 'src/common/respository-module/typeorm-ex.decorator';
+import { TypeOrmExModule } from 'src/common/repository-module/typeorm-ex.decorator';
 import { UsersRepository } from 'src/users/repositories/users.repository';
-import { JwtAccessStrategy } from './strategy/jwt-access.strategy';
 import { JwtAccessAuthGuard } from './guard/jwt-access.guard';
 import { JwtRefreshStrategy } from './strategy/jwt-refresh.strategy';
 import { JwtRefreshGuard } from './guard/jwt-refresh.guard';
+import { APIRateLimitModule } from '../common/modules/rate-limit.module';
+import { TwoFactorAuthenticationController } from './2fa/twoFactorAuthentication.controller';
+import { TwoFactorAuthenticationService } from './2fa/twoFactorAuthentication.service';
+import { JwtTwoFactorStrategy } from './2fa/strategy/jwt-twoFactor.strategy';
+import JwtTwoFactorGuard from './2fa/guard/jwt-twoFactor.guard';
 
 @Module({
   imports: [
@@ -31,8 +35,9 @@ import { JwtRefreshGuard } from './guard/jwt-refresh.guard';
       inject: [ConfigService],
     }),
     forwardRef(() => UsersModule),
+    APIRateLimitModule,
   ],
-  controllers: [AuthController],
-  providers: [AuthService, UsersService, JwtAccessStrategy, JwtRefreshStrategy, JwtAccessAuthGuard, JwtRefreshGuard],
+  controllers: [AuthController, TwoFactorAuthenticationController],
+  providers: [AuthService, UsersService, TwoFactorAuthenticationService, JwtRefreshStrategy,JwtTwoFactorStrategy, JwtAccessAuthGuard, JwtRefreshGuard, JwtTwoFactorGuard],
 })
 export class AuthModule {}

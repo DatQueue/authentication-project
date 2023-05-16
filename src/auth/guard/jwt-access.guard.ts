@@ -1,23 +1,46 @@
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
-import { AuthGuard } from "@nestjs/passport";
+import { UsersService } from "src/users/users.service";
+import { Payload } from "../payload/payload.interface";
+import { User } from "src/users/entities/users.entity";
 
 @Injectable()
-export class JwtAccessAuthGuard extends AuthGuard('jwt-access-token') implements CanActivate {
+export class JwtAccessAuthGuard implements CanActivate {
   constructor(
     private jwtService: JwtService,
-  ) {
-    super();
-  }
-  async canActivate(
-    context: ExecutionContext,
-  ): Promise<any> {
+    private userService: UsersService,
+  ) {}
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     try {
       const request = context.switchToHttp().getRequest();
-      const access_token = request.cookies['access_token']; 
-      return this.jwtService.verify(access_token);
-    }catch(err) {
-      return false;
+      const access_token = request.cookies['access_token'];
+
+      const decodedToken = await this.jwtService.verifyAsync(access_token);
+
+      if (!decodedToken) {
+        return false; // 액세스 토큰이 유효하지 않음
+      }
+
+      const userId = decodedToken.id;
+      const user = await this.userService.findUserById(userId);
+
+      if (!user) {
+        return false; // 사용자가 존재하지 않음
+      }
+
+      // 사용자 정보를 User 엔터티로 변환하여 할당
+      request.user = this.mapPayloadToUser(decodedToken, user);
+
+      return true; // 인증 성공
+    } catch (err) {
+      return false; // 인증 실패
+    }
+  }
+
+  private mapPayloadToUser(payload: Payload, user: User): User {
+    return {
+      ...user,
+      ...payload,
     }
   }
 }

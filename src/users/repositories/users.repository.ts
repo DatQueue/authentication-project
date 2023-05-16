@@ -1,4 +1,4 @@
-import { CustomRepository } from "src/common/respository-module/typeorm-ex.module";
+import { CustomRepository } from "src/common/repository-module/typeorm-ex.module";
 import { Repository } from "typeorm";
 import { User } from "../entities/users.entity";
 

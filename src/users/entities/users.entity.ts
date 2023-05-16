@@ -22,4 +22,10 @@ export class User {
 
   @Column({ type: 'datetime', nullable: true })
   currentRefreshTokenExp: Date;
+
+  @Column({ nullable: true })
+  twoFactorAuthenticationSecret: string;
+
+  @Column({ default: false })
+  isTwoFactorAuthenticationEnabled: boolean;
 }

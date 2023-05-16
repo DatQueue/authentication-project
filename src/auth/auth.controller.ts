@@ -1,12 +1,13 @@
-import { Controller, Post, Res, Body, Get, Req, UseGuards , HttpCode, UnauthorizedException} from '@nestjs/common';
+import { Controller, Post, Res, Body, Get, Req, UseGuards , UnauthorizedException, UseFilters, UseInterceptors} from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { Request, Response } from 'express';
+import { Response, Request } from 'express';
 import { LoginDto } from './model/login.dto';
 import { JwtAccessAuthGuard } from './guard/jwt-access.guard';
 import { UsersService } from 'src/users/users.service';
 import { User } from 'src/users/entities/users.entity';
 import { JwtRefreshGuard } from './guard/jwt-refresh.guard';
 import { RefreshTokenDto } from './model/refreshToken.dto';
+import { RateLimitFilter } from './filters/login-ex.filter';
 
 @Controller('auth')
 export class AuthController {
@@ -16,6 +17,7 @@ export class AuthController {
   ) {}
 
   @Post('login')
+  @UseFilters(RateLimitFilter)
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) res: Response,
@@ -23,7 +25,7 @@ export class AuthController {
     const user = await this.authService.validateUser(loginDto);
     const access_token = await this.authService.generateAccessToken(user);
     const refresh_token = await this.authService.generateRefreshToken(user);
-
+    
     await this.userService.setCurrentRefreshToken(refresh_token,user.id);
     res.setHeader('Authorization', 'Bearer ' + [access_token, refresh_token]);
     res.cookie('access_token', access_token, {
@@ -31,12 +33,28 @@ export class AuthController {
     });
     res.cookie('refresh_token', refresh_token, {
       httpOnly: true,
-    })
+    });
+
+    if (user.isTwoFactorAuthenticationEnabled) {
+      return {
+        message: 'login success',
+        access_token: access_token,
+        refresh_token: refresh_token,
+        isTwoFactorAuthenticationEnabled: true,
+      }
+    }
+    
     return {
       message: 'login success',
       access_token: access_token,
       refresh_token: refresh_token,
+      isTwoFactorAuthenticationEnabled: false,
     };
+  }
+
+  @Get('cookie')
+  async cookie(@Req() req: Request) {
+    console.log(req.cookies['refresh_token']);
   }
 
   @Post('refresh')
@@ -58,10 +76,10 @@ export class AuthController {
   
   @Get('authenticate')
   @UseGuards(JwtAccessAuthGuard)
-  async user(@Req() req: Request, @Res() res: Response): Promise<any> {
-    const userId: number = await this.authService.userId(req); 
+  async user(@Req() req: any): Promise<any> {
+    const userId: number = req.user.id; 
     const verifiedUser: User = await this.userService.findUserById(userId);
-    return res.send(verifiedUser);
+    return verifiedUser;
   }
 
   @Post('logout')

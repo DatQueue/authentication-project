@@ -1,13 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException, UnauthorizedException, forwardRef } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { Request } from 'express';
 import { User } from 'src/users/entities/users.entity';
 import { UsersService } from 'src/users/users.service';
 import { LoginDto } from './model/login.dto';
 import { Payload } from './payload/payload.interface';
 import { ConfigService } from '@nestjs/config';
 import { RefreshTokenDto } from './model/refreshToken.dto';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 
 @Injectable()
@@ -32,34 +32,64 @@ export class AuthService {
     return user;
   } 
 
-  async refresh(refreshTokenDto: RefreshTokenDto): Promise<{ accessToken: string }> {
+  async getDecodedRefreshToken(refreshTokenDto: RefreshTokenDto): Promise<Payload> {
     const { refresh_token } = refreshTokenDto;
+    const decodedRefreshToken = await this.jwtService.verify(refresh_token, { secret: process.env.JWT_REFRESH_SECRET }) as Payload;
+    return decodedRefreshToken;
+  }
 
-    // Verify refresh token
-    // JWT Refresh Token 검증 로직
-    const decodedRefreshToken = this.jwtService.verify(refresh_token, { secret: process.env.JWT_REFRESH_SECRET }) as Payload;
-
+  async refresh(refreshTokenDto: RefreshTokenDto): Promise<{ accessToken: string }> {
+    
+    const decodedRefreshToken = await this.getDecodedRefreshToken(refreshTokenDto);
     // Check if user exists
     const userId = decodedRefreshToken.id;
-    const user = await this.userService.getUserIfRefreshTokenMatches(refresh_token, userId);
+
+    const refreshTokenExpTime = parseInt(decodedRefreshToken.exp, 10) * 1000; //ms
+    const currentTime = Date.now();
+    console.log(refreshTokenExpTime, currentTime);
+
+    if (refreshTokenExpTime < currentTime) {
+      await this.userService.removeRefreshToken(userId);
+    }
+
+    const user = await this.userService.getUserIfRefreshTokenMatches(refreshTokenDto.refresh_token, userId);
     if (!user) {
       throw new UnauthorizedException('Invalid user!');
     }
-
     // Generate new access token
     const accessToken = await this.generateAccessToken(user);
 
     return {accessToken};
   }
 
-  async generateAccessToken(user: User): Promise<string> {
+  async getRefreshTokenValidityPeriod() {
+    const currentTime: number = Date.now();
+    const refreshTokenExpTime: number = (await this.userService.getCurrentRefreshTokenExp()).getTime();
+    const refreshTokenValidityPeriod = refreshTokenExpTime - currentTime;
+    return refreshTokenValidityPeriod;
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT) 
+  async removeExpiredTokens() {
+    const currentTime = new Date().getTime();
+    const usersWithExpiredTokens = await this.userService.findUsersWithExpiredTokens(currentTime);
+    console.log(usersWithExpiredTokens);
+    for (const user of usersWithExpiredTokens) {
+      if (user.currentRefreshToken) {
+        await this.userService.removeRefreshToken(user.id); 
+      }
+    }
+  }
+
+  async generateAccessToken(user: User, isSecondFactorAuthenticated = false): Promise<string> {
     const payload: Payload = {
       id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      isSecondFactorAuthenticated: isSecondFactorAuthenticated,
     }
-    return this.jwtService.sign(payload);
+    return this.jwtService.signAsync(payload);
   }
 
   async generateRefreshToken(user: User): Promise<string> {
@@ -75,11 +105,4 @@ export class AuthService {
     });
   }
 
-  async userId(req: Request): Promise<number> {
-    const cookie = req.cookies['access_token'];
-
-    const data = await this.jwtService.verifyAsync(cookie);
-
-    return data['id'];
-  }
 }

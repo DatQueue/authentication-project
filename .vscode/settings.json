@@ -4,6 +4,7 @@
         "datasource",
         "datetime",
         "firstname",
+        "keyuri",
         "lastname",
         "typeorm"
     ],

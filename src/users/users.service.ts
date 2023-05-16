@@ -1,10 +1,11 @@
-import { HttpException, HttpStatus, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersRepository } from './repositories/users.repository';
 import { UserCreateDto } from 'src/users/models/user-create.dto';
 import { User } from './entities/users.entity';
 import { UserUpdateDto } from './models/user-update.dto';
 import { ConfigService } from '@nestjs/config';
+import { UpdateResult } from 'typeorm';
 
 @Injectable()
 export class UsersService {
@@ -117,10 +118,37 @@ export class UsersService {
     } 
   }
 
-  async removeRefreshToken(userId: number): Promise<any> {
+  async findUsersWithExpiredTokens(currentTime: number): Promise<User[]> {
+    const queryBuilder = this.userRepository.createQueryBuilder('user');
+    const usersWithExpiredTokens = await queryBuilder
+      .where('user.currentRefreshTokenExp <= :currentTime', { currentTime: new Date(currentTime) })
+      .getMany();
+    return usersWithExpiredTokens;
+  }
+
+  async removeRefreshToken(userId: number): Promise<UpdateResult> {
     return await this.userRepository.update(userId, {
       currentRefreshToken: null,
       currentRefreshTokenExp: null,
     });
+  }
+
+  async setTwoFactorAuthenticationSecret(secret: string, userId: number): Promise<UpdateResult> {
+    return this.userRepository.update(userId, {
+      twoFactorAuthenticationSecret: secret,
+    });
+  }
+
+  async turnOnTwoFactorAuthentication(userId: number): Promise<UpdateResult> {
+    return await this.userRepository.update(userId, {
+      isTwoFactorAuthenticationEnabled: true,
+    });
+  }
+
+  async turnOffTwoFactorAuthentication(userId: number): Promise<UpdateResult> {
+    return await this.userRepository.update(userId, {
+      twoFactorAuthenticationSecret: null,
+      isTwoFactorAuthenticationEnabled: false,
+    })
   }
 }
