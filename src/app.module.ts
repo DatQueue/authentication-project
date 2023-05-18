@@ -5,7 +5,8 @@ import { User } from './users/entities/users.entity';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { TwoFATestController } from './test.controller';
+import { TwoFATestController } from './test/test.controller';
+import { TwoFATestModule } from './test/test.module';
 
 @Module({
   imports: [
@@ -26,9 +27,10 @@ import { TwoFATestController } from './test.controller';
     }),
     UsersModule,
     AuthModule,
-    ScheduleModule.forRoot()
+    ScheduleModule.forRoot(),
+    TwoFATestModule
   ],
-  controllers: [TwoFATestController],
+  controllers: [],
   providers: [],
 })
 export class AppModule {}

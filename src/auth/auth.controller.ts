@@ -88,6 +88,7 @@ export class AuthController {
     await this.userService.removeRefreshToken(req.user.id);
     res.clearCookie('access_token');
     res.clearCookie('refresh_token');
+    res.clearCookie('two_fa_token');
     return res.send({
       message: 'logout success'
     });

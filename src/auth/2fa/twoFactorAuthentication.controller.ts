@@ -6,6 +6,7 @@ import { JwtAccessAuthGuard } from "../guard/jwt-access.guard";
 import RequestWithUser from "../interfaces/requestWithUser.interface";
 import { TwoFactorAuthenticationCodeDto } from "./model/twoFactorAuthentication.dto";
 import { AuthService } from "../auth.service";
+import { Payload } from "../payload/payload.interface";
 
 @Controller('2fa')
 @UseInterceptors(ClassSerializerInterceptor)
@@ -66,8 +67,11 @@ export class TwoFactorAuthenticationController {
   @UseGuards(JwtAccessAuthGuard)
   async authenticate(
     @Req() req: any,
-    @Body() twoFactorAuthenticationCodeDto: TwoFactorAuthenticationCodeDto
+    @Body() twoFactorAuthenticationCodeDto: TwoFactorAuthenticationCodeDto,
   ) {
+
+    console.log(req.user);
+    
     const isCodeValidated = await this.twoFactorAuthenticationService.isTwoFactorAuthenticationCodeValid(
       twoFactorAuthenticationCodeDto.twoFactorAuthenticationCode, req.user
     );
@@ -80,9 +84,12 @@ export class TwoFactorAuthenticationController {
       throw new UnauthorizedException('Invalid Authentication-Code');
     }
 
-    const accessToken = await this.authService.generateAccessToken(req.user, true);
-    console.log(req.user.isSecondFactorAuthenticated);
-    req.res.setHeader('Set-Cookie', [accessToken]);
+    const tfa_accessToken = await this.authService.generateAccessToken(req.user, true);
+    console.log(tfa_accessToken);
+    req.res.cookie('two_fa_token', tfa_accessToken, {
+      httpOnly: true,
+      path: '/',
+    });
 
     return req.user;
   }

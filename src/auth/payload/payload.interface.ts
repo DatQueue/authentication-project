@@ -5,5 +5,5 @@ export interface Payload {
   lastName: string;
   iat?: string;
   exp?: string;
-  isSecondFactorAuthenticated?: boolean;
+  isSecondFactorAuthenticated: boolean;
 }

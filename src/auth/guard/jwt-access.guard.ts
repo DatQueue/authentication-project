@@ -29,18 +29,11 @@ export class JwtAccessAuthGuard implements CanActivate {
       }
 
       // 사용자 정보를 User 엔터티로 변환하여 할당
-      request.user = this.mapPayloadToUser(decodedToken, user);
+      request.user = user;
 
       return true; // 인증 성공
     } catch (err) {
       return false; // 인증 실패
-    }
-  }
-
-  private mapPayloadToUser(payload: Payload, user: User): User {
-    return {
-      ...user,
-      ...payload,
     }
   }
 }

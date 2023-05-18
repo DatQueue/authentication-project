@@ -81,19 +81,19 @@ export class AuthService {
     }
   }
 
-  async generateAccessToken(user: User, isSecondFactorAuthenticated = false): Promise<string> {
+  async generateAccessToken(user: User, isSecondFactorAuthenticated=false): Promise<string> {
     const payload: Payload = {
       id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
-      isSecondFactorAuthenticated: isSecondFactorAuthenticated,
+      isSecondFactorAuthenticated: isSecondFactorAuthenticated
     }
     return this.jwtService.signAsync(payload);
   }
 
   async generateRefreshToken(user: User): Promise<string> {
-    const payload: Payload = {
+    const payload: Partial<Payload> = {
       id: user.id,
       email: user.email,
       firstName: user.firstName,
