@@ -9,7 +9,7 @@ import { UsersRepository } from 'src/users/repositories/users.repository';
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
-    TypeOrmExModule.forCustomRepository([UsersRepository])
+    TypeOrmExModule.forCustomRepository([UsersRepository]),
   ],
   controllers: [TwoFATestController],
   providers: [UsersService],

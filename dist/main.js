@@ -165,14 +165,27 @@ module.exports = function (updatedModules, renewedModules) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core_1 = __webpack_require__(4);
 const app_module_1 = __webpack_require__(5);
-const dotenv = __webpack_require__(46);
+const dotenv = __webpack_require__(58);
 const common_1 = __webpack_require__(6);
-const cookieParser = __webpack_require__(47);
+const cookieParser = __webpack_require__(59);
+const session = __webpack_require__(60);
+const passport = __webpack_require__(61);
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     app.setGlobalPrefix("api");
     app.useGlobalPipes(new common_1.ValidationPipe({ transform: true }));
     app.use(cookieParser());
+    app.use(session({
+        secret: 'my-secret',
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+            maxAge: 60000,
+            httpOnly: true,
+        },
+    }));
+    app.use(passport.initialize());
+    app.use(passport.session());
     dotenv.config();
     await app.listen(4000, '0.0.0.0');
     if (true) {
@@ -208,10 +221,11 @@ const common_1 = __webpack_require__(6);
 const typeorm_1 = __webpack_require__(7);
 const users_module_1 = __webpack_require__(8);
 const users_entity_1 = __webpack_require__(14);
-const auth_module_1 = __webpack_require__(20);
-const config_1 = __webpack_require__(15);
-const schedule_1 = __webpack_require__(24);
-const test_module_1 = __webpack_require__(44);
+const auth_module_1 = __webpack_require__(23);
+const config_1 = __webpack_require__(16);
+const schedule_1 = __webpack_require__(27);
+const test_module_1 = __webpack_require__(56);
+const social_auth_entity_1 = __webpack_require__(53);
 let AppModule = class AppModule {
 };
 AppModule = __decorate([
@@ -227,7 +241,7 @@ AppModule = __decorate([
                 logging: true,
                 autoLoadEntities: true,
                 synchronize: true,
-                entities: [users_entity_1.User],
+                entities: [users_entity_1.User, social_auth_entity_1.SocialLoginInfo],
             }),
             config_1.ConfigModule.forRoot({
                 isGlobal: true,
@@ -274,10 +288,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UsersModule = void 0;
 const common_1 = __webpack_require__(6);
 const users_service_1 = __webpack_require__(9);
-const users_controller_1 = __webpack_require__(16);
+const users_controller_1 = __webpack_require__(17);
 const typeorm_1 = __webpack_require__(7);
 const users_entity_1 = __webpack_require__(14);
-const typeorm_ex_decorator_1 = __webpack_require__(19);
+const typeorm_ex_decorator_1 = __webpack_require__(22);
 const users_repository_1 = __webpack_require__(11);
 let UsersModule = class UsersModule {
 };
@@ -315,7 +329,7 @@ exports.UsersService = void 0;
 const common_1 = __webpack_require__(6);
 const bcrypt = __webpack_require__(10);
 const users_repository_1 = __webpack_require__(11);
-const config_1 = __webpack_require__(15);
+const config_1 = __webpack_require__(16);
 let UsersService = class UsersService {
     constructor(userRepository, configService) {
         this.userRepository = userRepository;
@@ -333,6 +347,18 @@ let UsersService = class UsersService {
         const saltOrRounds = 12;
         const hashedPassword = await this.hashPassword(newUser.password, saltOrRounds);
         return this.userRepository.save(Object.assign(Object.assign({}, newUser), { password: hashedPassword, confirmPassword: hashedPassword }));
+    }
+    async createSocialUser(socialLoginInfoDto) {
+        const { email, firstName, lastName, socialProvider, externalId, refreshToken } = socialLoginInfoDto;
+        const newUser = await this.userRepository.save({
+            email: email,
+            firstName: firstName,
+            lastName: lastName,
+            socialProvider: socialProvider,
+            externalId: externalId,
+            socialProvidedRefreshToken: refreshToken,
+        });
+        return await this.userRepository.save(newUser);
     }
     async hashPassword(password, saltOrRounds) {
         return bcrypt.hash(password, saltOrRounds);
@@ -367,6 +393,28 @@ let UsersService = class UsersService {
             }
         });
         return updatedUser;
+    }
+    async updateSocialUserInfo(id) {
+        await this.userRepository.update(id, {
+            isSocialAccountRegistered: true,
+        });
+        const updateUser = await this.userRepository.findOne({
+            where: {
+                id: id,
+            },
+        });
+        return updateUser;
+    }
+    async updateSocialUserRefToken(id, refreshToken) {
+        await this.userRepository.update(id, {
+            socialProvidedRefreshToken: refreshToken,
+        });
+        const updateUser = await this.userRepository.findOne({
+            where: {
+                id: id,
+            }
+        });
+        return updateUser;
     }
     async deleteUser(id) {
         return this.userRepository.delete(id);
@@ -509,6 +557,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.User = void 0;
+const provider_enum_1 = __webpack_require__(15);
 const typeorm_1 = __webpack_require__(13);
 let User = class User {
 };
@@ -529,7 +578,7 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "email", void 0);
 __decorate([
-    (0, typeorm_1.Column)(),
+    (0, typeorm_1.Column)({ nullable: true, default: null }),
     __metadata("design:type", String)
 ], User.prototype, "password", void 0);
 __decorate([
@@ -548,6 +597,22 @@ __decorate([
     (0, typeorm_1.Column)({ default: false }),
     __metadata("design:type", Boolean)
 ], User.prototype, "isTwoFactorAuthenticationEnabled", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "isSocialAccountRegistered", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'social_provider', default: provider_enum_1.Provider.LOCAL }),
+    __metadata("design:type", String)
+], User.prototype, "socialProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'external_id', nullable: true, default: null }),
+    __metadata("design:type", String)
+], User.prototype, "externalId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'social_refresh_token', nullable: true, default: null }),
+    __metadata("design:type", String)
+], User.prototype, "socialProvidedRefreshToken", void 0);
 User = __decorate([
     (0, typeorm_1.Entity)({ name: 'users' })
 ], User);
@@ -556,60 +621,25 @@ exports.User = User;
 
 /***/ }),
 /* 15 */
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Provider = void 0;
+var Provider;
+(function (Provider) {
+    Provider["LOCAL"] = "local";
+    Provider["GOOGLE"] = "google";
+})(Provider = exports.Provider || (exports.Provider = {}));
+
+
+/***/ }),
+/* 16 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("@nestjs/config");
-
-/***/ }),
-/* 16 */
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
-
-"use strict";
-
-var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
-    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
-    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
-    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
-    return c > 3 && r && Object.defineProperty(target, key, r), r;
-};
-var __metadata = (this && this.__metadata) || function (k, v) {
-    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
-};
-var __param = (this && this.__param) || function (paramIndex, decorator) {
-    return function (target, key) { decorator(target, key, paramIndex); }
-};
-var _a, _b;
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.UsersController = void 0;
-const common_1 = __webpack_require__(6);
-const users_service_1 = __webpack_require__(9);
-const user_create_dto_1 = __webpack_require__(17);
-let UsersController = class UsersController {
-    constructor(userService) {
-        this.userService = userService;
-    }
-    async register(userCreateDto) {
-        if (userCreateDto.password !== userCreateDto.confirmPassword) {
-            throw new common_1.BadRequestException('Passwords do not match!');
-        }
-        const newUser = await this.userService.createUser(userCreateDto);
-        return newUser;
-    }
-};
-__decorate([
-    (0, common_1.Post)('register'),
-    __param(0, (0, common_1.Body)()),
-    __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_b = typeof user_create_dto_1.UserCreateDto !== "undefined" && user_create_dto_1.UserCreateDto) === "function" ? _b : Object]),
-    __metadata("design:returntype", Promise)
-], UsersController.prototype, "register", null);
-UsersController = __decorate([
-    (0, common_1.Controller)('users'),
-    __metadata("design:paramtypes", [typeof (_a = typeof users_service_1.UsersService !== "undefined" && users_service_1.UsersService) === "function" ? _a : Object])
-], UsersController);
-exports.UsersController = UsersController;
-
 
 /***/ }),
 /* 17 */
@@ -626,9 +656,71 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+var _a, _b, _c;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.UsersController = void 0;
+const common_1 = __webpack_require__(6);
+const users_service_1 = __webpack_require__(9);
+const user_create_dto_1 = __webpack_require__(18);
+const user_update_dto_1 = __webpack_require__(20);
+let UsersController = class UsersController {
+    constructor(userService) {
+        this.userService = userService;
+    }
+    async register(userCreateDto) {
+        if (userCreateDto.password !== userCreateDto.confirmPassword) {
+            throw new common_1.BadRequestException('Passwords do not match!');
+        }
+        const newUser = await this.userService.createUser(userCreateDto);
+        return newUser;
+    }
+    async updateUserInfo(id, userUpdateDto) {
+        return await this.userService.updateUserInfo(id, userUpdateDto);
+    }
+};
+__decorate([
+    (0, common_1.Post)('register'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_b = typeof user_create_dto_1.UserCreateDto !== "undefined" && user_create_dto_1.UserCreateDto) === "function" ? _b : Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "register", null);
+__decorate([
+    (0, common_1.Put)(':id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, typeof (_c = typeof user_update_dto_1.UserUpdateDto !== "undefined" && user_update_dto_1.UserUpdateDto) === "function" ? _c : Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "updateUserInfo", null);
+UsersController = __decorate([
+    (0, common_1.Controller)('users'),
+    __metadata("design:paramtypes", [typeof (_a = typeof users_service_1.UsersService !== "undefined" && users_service_1.UsersService) === "function" ? _a : Object])
+], UsersController);
+exports.UsersController = UsersController;
+
+
+/***/ }),
+/* 18 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UserCreateDto = void 0;
-const class_validator_1 = __webpack_require__(18);
+const class_validator_1 = __webpack_require__(19);
 class UserCreateDto {
 }
 __decorate([
@@ -660,14 +752,36 @@ exports.UserCreateDto = UserCreateDto;
 
 
 /***/ }),
-/* 18 */
+/* 19 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("class-validator");
 
 /***/ }),
-/* 19 */
+/* 20 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.UserUpdateDto = void 0;
+const mapped_types_1 = __webpack_require__(21);
+const user_create_dto_1 = __webpack_require__(18);
+class UserUpdateDto extends (0, mapped_types_1.PartialType)(user_create_dto_1.UserCreateDto) {
+}
+exports.UserUpdateDto = UserUpdateDto;
+
+
+/***/ }),
+/* 21 */
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("@nestjs/mapped-types");
+
+/***/ }),
+/* 22 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 "use strict";
@@ -705,7 +819,7 @@ exports.TypeOrmExModule = TypeOrmExModule;
 
 
 /***/ }),
-/* 20 */
+/* 23 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -719,25 +833,26 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthModule = void 0;
 const common_1 = __webpack_require__(6);
-const auth_controller_1 = __webpack_require__(21);
-const auth_service_1 = __webpack_require__(22);
-const passport_1 = __webpack_require__(29);
-const jwt_1 = __webpack_require__(23);
-const config_1 = __webpack_require__(15);
+const auth_controller_1 = __webpack_require__(24);
+const auth_service_1 = __webpack_require__(25);
+const passport_1 = __webpack_require__(32);
+const jwt_1 = __webpack_require__(26);
+const config_1 = __webpack_require__(16);
 const users_module_1 = __webpack_require__(8);
 const users_service_1 = __webpack_require__(9);
 const typeorm_1 = __webpack_require__(7);
 const users_entity_1 = __webpack_require__(14);
-const typeorm_ex_decorator_1 = __webpack_require__(19);
+const typeorm_ex_decorator_1 = __webpack_require__(22);
 const users_repository_1 = __webpack_require__(11);
-const jwt_access_guard_1 = __webpack_require__(27);
-const jwt_refresh_strategy_1 = __webpack_require__(33);
-const jwt_refresh_guard_1 = __webpack_require__(28);
-const rate_limit_module_1 = __webpack_require__(35);
-const twoFactorAuthentication_controller_1 = __webpack_require__(36);
-const twoFactorAuthentication_service_1 = __webpack_require__(37);
-const jwt_twoFactor_strategy_1 = __webpack_require__(42);
-const jwt_twoFactor_guard_1 = __webpack_require__(43);
+const jwt_access_guard_1 = __webpack_require__(30);
+const jwt_refresh_strategy_1 = __webpack_require__(36);
+const jwt_refresh_guard_1 = __webpack_require__(31);
+const rate_limit_module_1 = __webpack_require__(38);
+const twoFactorAuthentication_controller_1 = __webpack_require__(39);
+const twoFactorAuthentication_service_1 = __webpack_require__(40);
+const jwt_twoFactor_strategy_1 = __webpack_require__(45);
+const jwt_twoFactor_guard_1 = __webpack_require__(46);
+const google_auth_module_1 = __webpack_require__(47);
 let AuthModule = class AuthModule {
 };
 AuthModule = __decorate([
@@ -745,7 +860,9 @@ AuthModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([users_entity_1.User]),
             typeorm_ex_decorator_1.TypeOrmExModule.forCustomRepository([users_repository_1.UsersRepository]),
-            passport_1.PassportModule.register({}),
+            passport_1.PassportModule.register({
+                session: true,
+            }),
             jwt_1.JwtModule.registerAsync({
                 imports: [config_1.ConfigModule],
                 useFactory: async (configService) => ({
@@ -758,6 +875,7 @@ AuthModule = __decorate([
             }),
             (0, common_1.forwardRef)(() => users_module_1.UsersModule),
             rate_limit_module_1.APIRateLimitModule,
+            google_auth_module_1.GoogleAuthenticationModule,
         ],
         controllers: [auth_controller_1.AuthController, twoFactorAuthentication_controller_1.TwoFactorAuthenticationController],
         providers: [auth_service_1.AuthService, users_service_1.UsersService, twoFactorAuthentication_service_1.TwoFactorAuthenticationService, jwt_refresh_strategy_1.JwtRefreshStrategy, jwt_twoFactor_strategy_1.JwtTwoFactorStrategy, jwt_access_guard_1.JwtAccessAuthGuard, jwt_refresh_guard_1.JwtRefreshGuard, jwt_twoFactor_guard_1.default],
@@ -767,7 +885,7 @@ exports.AuthModule = AuthModule;
 
 
 /***/ }),
-/* 21 */
+/* 24 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -788,14 +906,14 @@ var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthController = void 0;
 const common_1 = __webpack_require__(6);
-const auth_service_1 = __webpack_require__(22);
-const express_1 = __webpack_require__(25);
-const login_dto_1 = __webpack_require__(26);
-const jwt_access_guard_1 = __webpack_require__(27);
+const auth_service_1 = __webpack_require__(25);
+const express_1 = __webpack_require__(28);
+const login_dto_1 = __webpack_require__(29);
+const jwt_access_guard_1 = __webpack_require__(30);
 const users_service_1 = __webpack_require__(9);
-const jwt_refresh_guard_1 = __webpack_require__(28);
-const refreshToken_dto_1 = __webpack_require__(30);
-const login_ex_filter_1 = __webpack_require__(31);
+const jwt_refresh_guard_1 = __webpack_require__(31);
+const refreshToken_dto_1 = __webpack_require__(33);
+const login_ex_filter_1 = __webpack_require__(34);
 let AuthController = class AuthController {
     constructor(authService, userService) {
         this.authService = authService;
@@ -908,7 +1026,7 @@ exports.AuthController = AuthController;
 
 
 /***/ }),
-/* 22 */
+/* 25 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -926,11 +1044,11 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthService = void 0;
 const common_1 = __webpack_require__(6);
-const jwt_1 = __webpack_require__(23);
+const jwt_1 = __webpack_require__(26);
 const bcrypt = __webpack_require__(10);
 const users_service_1 = __webpack_require__(9);
-const config_1 = __webpack_require__(15);
-const schedule_1 = __webpack_require__(24);
+const config_1 = __webpack_require__(16);
+const schedule_1 = __webpack_require__(27);
 let AuthService = class AuthService {
     constructor(userService, jwtService, configService) {
         this.userService = userService;
@@ -1021,28 +1139,28 @@ exports.AuthService = AuthService;
 
 
 /***/ }),
-/* 23 */
+/* 26 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("@nestjs/jwt");
 
 /***/ }),
-/* 24 */
+/* 27 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("@nestjs/schedule");
 
 /***/ }),
-/* 25 */
+/* 28 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("express");
 
 /***/ }),
-/* 26 */
+/* 29 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1058,7 +1176,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LoginDto = void 0;
-const class_validator_1 = __webpack_require__(18);
+const class_validator_1 = __webpack_require__(19);
 class LoginDto {
 }
 __decorate([
@@ -1075,7 +1193,7 @@ exports.LoginDto = LoginDto;
 
 
 /***/ }),
-/* 27 */
+/* 30 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1093,7 +1211,7 @@ var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.JwtAccessAuthGuard = void 0;
 const common_1 = __webpack_require__(6);
-const jwt_1 = __webpack_require__(23);
+const jwt_1 = __webpack_require__(26);
 const users_service_1 = __webpack_require__(9);
 let JwtAccessAuthGuard = class JwtAccessAuthGuard {
     constructor(jwtService, userService) {
@@ -1129,7 +1247,7 @@ exports.JwtAccessAuthGuard = JwtAccessAuthGuard;
 
 
 /***/ }),
-/* 28 */
+/* 31 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1143,7 +1261,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.JwtRefreshGuard = void 0;
 const common_1 = __webpack_require__(6);
-const passport_1 = __webpack_require__(29);
+const passport_1 = __webpack_require__(32);
 let JwtRefreshGuard = class JwtRefreshGuard extends (0, passport_1.AuthGuard)('jwt-refresh-token') {
 };
 JwtRefreshGuard = __decorate([
@@ -1153,14 +1271,14 @@ exports.JwtRefreshGuard = JwtRefreshGuard;
 
 
 /***/ }),
-/* 29 */
+/* 32 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("@nestjs/passport");
 
 /***/ }),
-/* 30 */
+/* 33 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1176,7 +1294,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.RefreshTokenDto = void 0;
-const class_validator_1 = __webpack_require__(18);
+const class_validator_1 = __webpack_require__(19);
 class RefreshTokenDto {
 }
 __decorate([
@@ -1187,7 +1305,7 @@ exports.RefreshTokenDto = RefreshTokenDto;
 
 
 /***/ }),
-/* 31 */
+/* 34 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1201,7 +1319,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.RateLimitFilter = void 0;
 const common_1 = __webpack_require__(6);
-const throttler_1 = __webpack_require__(32);
+const throttler_1 = __webpack_require__(35);
 const exceptionTypes = [throttler_1.ThrottlerException];
 let RateLimitFilter = class RateLimitFilter {
     catch(exception, host) {
@@ -1236,14 +1354,14 @@ const handlingException = (err) => {
 
 
 /***/ }),
-/* 32 */
+/* 35 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("@nestjs/throttler");
 
 /***/ }),
-/* 33 */
+/* 36 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1261,10 +1379,10 @@ var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.JwtRefreshStrategy = void 0;
 const common_1 = __webpack_require__(6);
-const passport_1 = __webpack_require__(29);
-const passport_jwt_1 = __webpack_require__(34);
+const passport_1 = __webpack_require__(32);
+const passport_jwt_1 = __webpack_require__(37);
 const users_service_1 = __webpack_require__(9);
-const jwt_1 = __webpack_require__(23);
+const jwt_1 = __webpack_require__(26);
 let JwtRefreshStrategy = class JwtRefreshStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy, 'jwt-refresh-token') {
     constructor(userService, jwtService) {
         super({
@@ -1295,14 +1413,14 @@ exports.JwtRefreshStrategy = JwtRefreshStrategy;
 
 
 /***/ }),
-/* 34 */
+/* 37 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("passport-jwt");
 
 /***/ }),
-/* 35 */
+/* 38 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1316,7 +1434,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.APIRateLimitModule = void 0;
 const common_1 = __webpack_require__(6);
-const throttler_1 = __webpack_require__(32);
+const throttler_1 = __webpack_require__(35);
 const core_1 = __webpack_require__(4);
 let APIRateLimitModule = class APIRateLimitModule {
 };
@@ -1341,7 +1459,7 @@ exports.APIRateLimitModule = APIRateLimitModule;
 
 
 /***/ }),
-/* 36 */
+/* 39 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1362,13 +1480,13 @@ var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TwoFactorAuthenticationController = void 0;
 const users_service_1 = __webpack_require__(9);
-const twoFactorAuthentication_service_1 = __webpack_require__(37);
+const twoFactorAuthentication_service_1 = __webpack_require__(40);
 const common_1 = __webpack_require__(6);
-const express_1 = __webpack_require__(25);
-const jwt_access_guard_1 = __webpack_require__(27);
-const requestWithUser_interface_1 = __webpack_require__(40);
-const twoFactorAuthentication_dto_1 = __webpack_require__(41);
-const auth_service_1 = __webpack_require__(22);
+const express_1 = __webpack_require__(28);
+const jwt_access_guard_1 = __webpack_require__(30);
+const requestWithUser_interface_1 = __webpack_require__(43);
+const twoFactorAuthentication_dto_1 = __webpack_require__(44);
+const auth_service_1 = __webpack_require__(25);
 let TwoFactorAuthenticationController = class TwoFactorAuthenticationController {
     constructor(twoFactorAuthenticationService, userService, authService) {
         this.twoFactorAuthenticationService = twoFactorAuthenticationService;
@@ -1462,7 +1580,7 @@ exports.TwoFactorAuthenticationController = TwoFactorAuthenticationController;
 
 
 /***/ }),
-/* 37 */
+/* 40 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1479,10 +1597,10 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TwoFactorAuthenticationService = void 0;
-const config_1 = __webpack_require__(15);
+const config_1 = __webpack_require__(16);
 const users_service_1 = __webpack_require__(9);
-const otplib_1 = __webpack_require__(38);
-const qrcode_1 = __webpack_require__(39);
+const otplib_1 = __webpack_require__(41);
+const qrcode_1 = __webpack_require__(42);
 const common_1 = __webpack_require__(6);
 let TwoFactorAuthenticationService = class TwoFactorAuthenticationService {
     constructor(userService, configService) {
@@ -1519,21 +1637,21 @@ exports.TwoFactorAuthenticationService = TwoFactorAuthenticationService;
 
 
 /***/ }),
-/* 38 */
+/* 41 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("otplib");
 
 /***/ }),
-/* 39 */
+/* 42 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("qrcode");
 
 /***/ }),
-/* 40 */
+/* 43 */
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -1542,7 +1660,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 
 
 /***/ }),
-/* 41 */
+/* 44 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1558,7 +1676,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TwoFactorAuthenticationCodeDto = void 0;
-const class_validator_1 = __webpack_require__(18);
+const class_validator_1 = __webpack_require__(19);
 class TwoFactorAuthenticationCodeDto {
 }
 __decorate([
@@ -1570,7 +1688,7 @@ exports.TwoFactorAuthenticationCodeDto = TwoFactorAuthenticationCodeDto;
 
 
 /***/ }),
-/* 42 */
+/* 45 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1588,8 +1706,8 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.JwtTwoFactorStrategy = void 0;
 const common_1 = __webpack_require__(6);
-const passport_1 = __webpack_require__(29);
-const passport_jwt_1 = __webpack_require__(34);
+const passport_1 = __webpack_require__(32);
+const passport_jwt_1 = __webpack_require__(37);
 const users_service_1 = __webpack_require__(9);
 let JwtTwoFactorStrategy = class JwtTwoFactorStrategy extends (0, passport_1.PassportStrategy)(passport_jwt_1.Strategy, 'jwt-two-factor') {
     constructor(userService) {
@@ -1623,7 +1741,7 @@ exports.JwtTwoFactorStrategy = JwtTwoFactorStrategy;
 
 
 /***/ }),
-/* 43 */
+/* 46 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1636,7 +1754,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const common_1 = __webpack_require__(6);
-const passport_1 = __webpack_require__(29);
+const passport_1 = __webpack_require__(32);
 let JwtTwoFactorGuard = class JwtTwoFactorGuard extends (0, passport_1.AuthGuard)('jwt-two-factor') {
 };
 JwtTwoFactorGuard = __decorate([
@@ -1646,7 +1764,423 @@ exports["default"] = JwtTwoFactorGuard;
 
 
 /***/ }),
-/* 44 */
+/* 47 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GoogleAuthenticationModule = void 0;
+const common_1 = __webpack_require__(6);
+const google_auth_controller_1 = __webpack_require__(48);
+const google_auth_service_1 = __webpack_require__(50);
+const google_strategy_1 = __webpack_require__(51);
+const typeorm_1 = __webpack_require__(7);
+const social_auth_entity_1 = __webpack_require__(53);
+const typeorm_ex_decorator_1 = __webpack_require__(22);
+const socialLogin_info_repository_1 = __webpack_require__(54);
+const google_guard_1 = __webpack_require__(49);
+const serializer_1 = __webpack_require__(55);
+const users_entity_1 = __webpack_require__(14);
+const users_repository_1 = __webpack_require__(11);
+const users_service_1 = __webpack_require__(9);
+let GoogleAuthenticationModule = class GoogleAuthenticationModule {
+};
+GoogleAuthenticationModule = __decorate([
+    (0, common_1.Module)({
+        imports: [
+            typeorm_1.TypeOrmModule.forFeature([social_auth_entity_1.SocialLoginInfo, users_entity_1.User]),
+            typeorm_ex_decorator_1.TypeOrmExModule.forCustomRepository([socialLogin_info_repository_1.SocialLoginInfoRepository, users_repository_1.UsersRepository]),
+        ],
+        controllers: [google_auth_controller_1.GoogleAuthenticationController],
+        providers: [users_service_1.UsersService, google_auth_service_1.GoogleAuthenticationService, serializer_1.SessionSerializer, google_strategy_1.GoogleStrategy, google_guard_1.GoogleAuthGuard]
+    })
+], GoogleAuthenticationModule);
+exports.GoogleAuthenticationModule = GoogleAuthenticationModule;
+
+
+/***/ }),
+/* 48 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GoogleAuthenticationController = void 0;
+const common_1 = __webpack_require__(6);
+const google_guard_1 = __webpack_require__(49);
+let GoogleAuthenticationController = class GoogleAuthenticationController {
+    constructor() { }
+    async handleLogin() {
+        return {
+            msg: 'Google Authentication',
+        };
+    }
+    async handleRedirect(req) {
+        return req.user;
+    }
+    async user(req) {
+        if (req.user) {
+            console.log(req.user, "Authenticated User");
+            return {
+                msg: "Authenticated",
+            };
+        }
+        else {
+            console.log(req.user, "User cannot found");
+            return {
+                msg: "Not Authenticated",
+            };
+        }
+    }
+};
+__decorate([
+    (0, common_1.Get)('/login'),
+    (0, common_1.UseGuards)(google_guard_1.GoogleAuthGuard),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], GoogleAuthenticationController.prototype, "handleLogin", null);
+__decorate([
+    (0, common_1.Get)('/redirect'),
+    (0, common_1.UseGuards)(google_guard_1.GoogleAuthGuard),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], GoogleAuthenticationController.prototype, "handleRedirect", null);
+__decorate([
+    (0, common_1.Get)('/status'),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], GoogleAuthenticationController.prototype, "user", null);
+GoogleAuthenticationController = __decorate([
+    (0, common_1.Controller)('auth/google'),
+    __metadata("design:paramtypes", [])
+], GoogleAuthenticationController);
+exports.GoogleAuthenticationController = GoogleAuthenticationController;
+
+
+/***/ }),
+/* 49 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GoogleAuthGuard = void 0;
+const common_1 = __webpack_require__(6);
+const passport_1 = __webpack_require__(32);
+let GoogleAuthGuard = class GoogleAuthGuard extends (0, passport_1.AuthGuard)('google') {
+    constructor() {
+        super();
+    }
+    async canActivate(context) {
+        const activate = await super.canActivate(context);
+        const request = context.switchToHttp().getRequest();
+        await super.logIn(request);
+        return activate;
+    }
+};
+GoogleAuthGuard = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [])
+], GoogleAuthGuard);
+exports.GoogleAuthGuard = GoogleAuthGuard;
+
+
+/***/ }),
+/* 50 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var _a;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GoogleAuthenticationService = void 0;
+const common_1 = __webpack_require__(6);
+const users_service_1 = __webpack_require__(9);
+const provider_enum_1 = __webpack_require__(15);
+let GoogleAuthenticationService = class GoogleAuthenticationService {
+    constructor(userService) {
+        this.userService = userService;
+    }
+    async validateAndSaveUser(socialLoginInfoDto) {
+        const { email, refreshToken } = socialLoginInfoDto;
+        console.log(refreshToken, "sdfsfsf");
+        const existingUser = await this.userService.findUserByEmail(email);
+        if (existingUser) {
+            if (existingUser.socialProvider !== provider_enum_1.Provider.GOOGLE) {
+                console.log(existingUser, "existingUser");
+                return {
+                    existingUser: existingUser,
+                    msg: '해당 이메일을 사용중인 계정이 존재합니다.'
+                };
+            }
+            else {
+                const updateUserWithRefToken = await this.userService.updateSocialUserRefToken(existingUser.id, refreshToken);
+                return updateUserWithRefToken;
+            }
+        }
+        const newUser = await this.userService.createSocialUser(socialLoginInfoDto);
+        const updateUser = await this.userService.updateSocialUserInfo(newUser.id);
+        console.log(updateUser, "updateUser");
+        return updateUser;
+    }
+    async findUserById(id) {
+        const user = await this.userService.findUserById(id);
+        return user;
+    }
+};
+GoogleAuthenticationService = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [typeof (_a = typeof users_service_1.UsersService !== "undefined" && users_service_1.UsersService) === "function" ? _a : Object])
+], GoogleAuthenticationService);
+exports.GoogleAuthenticationService = GoogleAuthenticationService;
+
+
+/***/ }),
+/* 51 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var _a;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GoogleStrategy = void 0;
+const common_1 = __webpack_require__(6);
+const passport_1 = __webpack_require__(32);
+const passport_google_oauth20_1 = __webpack_require__(52);
+const google_auth_service_1 = __webpack_require__(50);
+let GoogleStrategy = class GoogleStrategy extends (0, passport_1.PassportStrategy)(passport_google_oauth20_1.Strategy) {
+    constructor(googleAuthService) {
+        super({
+            clientID: process.env.GOOGLE_CLIENT_ID,
+            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            callbackURL: process.env.GOOGLE_CALLBACK_URL,
+            scope: [process.env.GOOGLE_SCOPE_PROFILE, process.env.GOOGLE_SCOPE_EMAIL],
+        });
+        this.googleAuthService = googleAuthService;
+    }
+    authorizationParams() {
+        return ({
+            access_type: 'offline',
+            prompt: 'select_account',
+        });
+    }
+    async validate(accessToken, refreshToken, profile, done) {
+        console.log(accessToken);
+        console.log(refreshToken);
+        console.log(profile);
+        const { name, emails, provider } = profile;
+        const socialLoginUserInfo = {
+            email: emails[0].value,
+            firstName: name.givenName,
+            lastName: name.familyName,
+            socialProvider: provider,
+            externalId: profile.id,
+            accessToken,
+            refreshToken,
+        };
+        try {
+            const user = await this.googleAuthService.validateAndSaveUser(socialLoginUserInfo);
+            console.log(user, "strategy");
+            done(null, user, accessToken);
+        }
+        catch (err) {
+            done(err, false);
+        }
+    }
+};
+GoogleStrategy = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [typeof (_a = typeof google_auth_service_1.GoogleAuthenticationService !== "undefined" && google_auth_service_1.GoogleAuthenticationService) === "function" ? _a : Object])
+], GoogleStrategy);
+exports.GoogleStrategy = GoogleStrategy;
+
+
+/***/ }),
+/* 52 */
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("passport-google-oauth20");
+
+/***/ }),
+/* 53 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SocialLoginInfo = void 0;
+const typeorm_1 = __webpack_require__(13);
+let SocialLoginInfo = class SocialLoginInfo {
+};
+__decorate([
+    (0, typeorm_1.PrimaryColumn)(),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "id", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'email' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "email", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'firstname' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "firstName", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'lastName' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "lastName", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'social_provider' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "socialProvider", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'external_id' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "externalId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'access_token' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "accessToken", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'refresh_token' }),
+    __metadata("design:type", String)
+], SocialLoginInfo.prototype, "refreshToken", void 0);
+SocialLoginInfo = __decorate([
+    (0, typeorm_1.Entity)({ name: 'social_login_info' })
+], SocialLoginInfo);
+exports.SocialLoginInfo = SocialLoginInfo;
+
+
+/***/ }),
+/* 54 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SocialLoginInfoRepository = void 0;
+const typeorm_1 = __webpack_require__(13);
+const social_auth_entity_1 = __webpack_require__(53);
+const typeorm_ex_module_1 = __webpack_require__(12);
+let SocialLoginInfoRepository = class SocialLoginInfoRepository extends typeorm_1.Repository {
+};
+SocialLoginInfoRepository = __decorate([
+    (0, typeorm_ex_module_1.CustomRepository)(social_auth_entity_1.SocialLoginInfo)
+], SocialLoginInfoRepository);
+exports.SocialLoginInfoRepository = SocialLoginInfoRepository;
+
+
+/***/ }),
+/* 55 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+"use strict";
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var _a;
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SessionSerializer = void 0;
+const passport_1 = __webpack_require__(32);
+const common_1 = __webpack_require__(6);
+const google_auth_service_1 = __webpack_require__(50);
+let SessionSerializer = class SessionSerializer extends passport_1.PassportSerializer {
+    constructor(googleAuthService) {
+        super();
+        this.googleAuthService = googleAuthService;
+    }
+    async serializeUser(user, done) {
+        console.log(user, "serializeUser");
+        done(null, user);
+    }
+    async deserializeUser(payload, done) {
+        const user = await this.googleAuthService.findUserById(payload.id);
+        console.log(user, "deserializeUser");
+        return user ? done(null, user) : done(null, null);
+    }
+};
+SessionSerializer = __decorate([
+    (0, common_1.Injectable)(),
+    __metadata("design:paramtypes", [typeof (_a = typeof google_auth_service_1.GoogleAuthenticationService !== "undefined" && google_auth_service_1.GoogleAuthenticationService) === "function" ? _a : Object])
+], SessionSerializer);
+exports.SessionSerializer = SessionSerializer;
+
+
+/***/ }),
+/* 56 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1660,11 +2194,11 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TwoFATestModule = void 0;
 const common_1 = __webpack_require__(6);
-const test_controller_1 = __webpack_require__(45);
+const test_controller_1 = __webpack_require__(57);
 const users_service_1 = __webpack_require__(9);
 const typeorm_1 = __webpack_require__(7);
 const users_entity_1 = __webpack_require__(14);
-const typeorm_ex_decorator_1 = __webpack_require__(19);
+const typeorm_ex_decorator_1 = __webpack_require__(22);
 const users_repository_1 = __webpack_require__(11);
 let TwoFATestModule = class TwoFATestModule {
 };
@@ -1672,7 +2206,7 @@ TwoFATestModule = __decorate([
     (0, common_1.Module)({
         imports: [
             typeorm_1.TypeOrmModule.forFeature([users_entity_1.User]),
-            typeorm_ex_decorator_1.TypeOrmExModule.forCustomRepository([users_repository_1.UsersRepository])
+            typeorm_ex_decorator_1.TypeOrmExModule.forCustomRepository([users_repository_1.UsersRepository]),
         ],
         controllers: [test_controller_1.TwoFATestController],
         providers: [users_service_1.UsersService],
@@ -1682,7 +2216,7 @@ exports.TwoFATestModule = TwoFATestModule;
 
 
 /***/ }),
-/* 45 */
+/* 57 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 "use strict";
@@ -1703,7 +2237,7 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TwoFATestController = void 0;
 const common_1 = __webpack_require__(6);
-const jwt_twoFactor_guard_1 = __webpack_require__(43);
+const jwt_twoFactor_guard_1 = __webpack_require__(46);
 const users_service_1 = __webpack_require__(9);
 let TwoFATestController = class TwoFATestController {
     constructor(userService) {
@@ -1730,18 +2264,32 @@ exports.TwoFATestController = TwoFATestController;
 
 
 /***/ }),
-/* 46 */
+/* 58 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("dotenv");
 
 /***/ }),
-/* 47 */
+/* 59 */
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("cookie-parser");
+
+/***/ }),
+/* 60 */
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("express-session");
+
+/***/ }),
+/* 61 */
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("passport");
 
 /***/ })
 /******/ 	]);
@@ -1805,7 +2353,7 @@ module.exports = require("cookie-parser");
 /******/ 	
 /******/ 	/* webpack/runtime/getFullHash */
 /******/ 	(() => {
-/******/ 		__webpack_require__.h = () => ("b887d85bfe6641a91e77")
+/******/ 		__webpack_require__.h = () => ("c3c17956959c0d0dca59")
 /******/ 	})();
 /******/ 	
 /******/ 	/* webpack/runtime/hasOwnProperty shorthand */

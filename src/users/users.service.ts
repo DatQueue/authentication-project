@@ -6,6 +6,7 @@ import { User } from './entities/users.entity';
 import { UserUpdateDto } from './models/user-update.dto';
 import { ConfigService } from '@nestjs/config';
 import { UpdateResult } from 'typeorm';
+import { SocialLoginInfoDto } from 'src/auth/google-oauth2/utils/socialLogin-info.dto';
 
 @Injectable()
 export class UsersService {
@@ -31,6 +32,20 @@ export class UsersService {
       password: hashedPassword,
       confirmPassword: hashedPassword
     });
+  }
+
+  async createSocialUser(socialLoginInfoDto: SocialLoginInfoDto): Promise<User> {
+    const { email, firstName, lastName, socialProvider, externalId, refreshToken } = socialLoginInfoDto;
+
+    const newUser: User = await this.userRepository.save({
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      socialProvider: socialProvider,
+      externalId: externalId,
+      socialProvidedRefreshToken: refreshToken,
+    });
+    return await this.userRepository.save(newUser);
   }
 
   private async hashPassword(password: string, saltOrRounds: number): Promise<string> {
@@ -74,6 +89,30 @@ export class UsersService {
       }
     });
     return updatedUser;
+  }
+
+  async updateSocialUserInfo(id: number) {
+    await this.userRepository.update(id, {
+      isSocialAccountRegistered: true,
+    })
+    const updateUser = await this.userRepository.findOne({
+      where: {
+        id: id,
+      },
+    });
+    return updateUser;
+  }
+
+  async updateSocialUserRefToken(id: number, refreshToken: string) {
+    await this.userRepository.update(id, {
+      socialProvidedRefreshToken: refreshToken,
+    })
+    const updateUser = await this.userRepository.findOne({
+      where: {
+        id: id,
+      }
+    });
+    return updateUser;
   }
 
   async deleteUser(id: number): Promise<any> {

@@ -5,8 +5,8 @@ import { User } from './users/entities/users.entity';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { TwoFATestController } from './test/test.controller';
 import { TwoFATestModule } from './test/test.module';
+import { SocialLoginInfo } from './auth/google-oauth2/entities/social-auth.entity';
 
 @Module({
   imports: [
@@ -20,7 +20,7 @@ import { TwoFATestModule } from './test/test.module';
       logging: true,
       autoLoadEntities: true,
       synchronize: true,
-      entities: [User],
+      entities: [User, SocialLoginInfo],
     }),
     ConfigModule.forRoot({
       isGlobal: true,

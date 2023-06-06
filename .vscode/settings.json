@@ -6,6 +6,7 @@
         "firstname",
         "keyuri",
         "lastname",
+        "resave",
         "typeorm"
     ],
     "editor.tabSize": 2

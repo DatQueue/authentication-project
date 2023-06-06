@@ -8,6 +8,7 @@ import { Payload } from './payload/payload.interface';
 import { ConfigService } from '@nestjs/config';
 import { RefreshTokenDto } from './model/refreshToken.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { SocialLoginInfoDto } from './google-oauth2/utils/socialLogin-info.dto';
 
 
 @Injectable()
@@ -104,5 +105,4 @@ export class AuthService {
       expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME'),
     });
   }
-
 }

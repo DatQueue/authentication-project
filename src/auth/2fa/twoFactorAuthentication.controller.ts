@@ -6,7 +6,7 @@ import { JwtAccessAuthGuard } from "../guard/jwt-access.guard";
 import RequestWithUser from "../interfaces/requestWithUser.interface";
 import { TwoFactorAuthenticationCodeDto } from "./model/twoFactorAuthentication.dto";
 import { AuthService } from "../auth.service";
-import { Payload } from "../payload/payload.interface";
+import { GoogleAuthGuard } from "../google-oauth2/guard/google-guard";
 
 @Controller('2fa')
 @UseInterceptors(ClassSerializerInterceptor)

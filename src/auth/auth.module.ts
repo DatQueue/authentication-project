@@ -18,12 +18,15 @@ import { TwoFactorAuthenticationController } from './2fa/twoFactorAuthentication
 import { TwoFactorAuthenticationService } from './2fa/twoFactorAuthentication.service';
 import { JwtTwoFactorStrategy } from './2fa/strategy/jwt-twoFactor.strategy';
 import JwtTwoFactorGuard from './2fa/guard/jwt-twoFactor.guard';
+import { GoogleAuthenticationModule } from './google-oauth2/google-auth.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User]),
     TypeOrmExModule.forCustomRepository([UsersRepository]),
-    PassportModule.register({}),
+    PassportModule.register({
+      session: true,
+    }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -36,6 +39,7 @@ import JwtTwoFactorGuard from './2fa/guard/jwt-twoFactor.guard';
     }),
     forwardRef(() => UsersModule),
     APIRateLimitModule,
+    GoogleAuthenticationModule,
   ],
   controllers: [AuthController, TwoFactorAuthenticationController],
   providers: [AuthService, UsersService, TwoFactorAuthenticationService, JwtRefreshStrategy,JwtTwoFactorStrategy, JwtAccessAuthGuard, JwtRefreshGuard, JwtTwoFactorGuard],
